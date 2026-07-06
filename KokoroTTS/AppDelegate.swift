@@ -275,9 +275,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
         }
         savedWindowFrames.removeAll()
 
-        // Restore regular activation policy
+        // Restore the user's Dock visibility preference
         if !wasActive {
-          NSApp.setActivationPolicy(.regular)
+          let hideFromDock = UserDefaults.standard.bool(forKey: hideFromDockKey)
+          NSApp.setActivationPolicy(hideFromDock ? .accessory : .regular)
         }
       }
     }

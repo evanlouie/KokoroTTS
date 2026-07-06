@@ -59,10 +59,12 @@ extension KokoroTTSModel {
 
   /// Stops playback and resets to beginning, clearing audio so text is editable again
   func stop() {
+    cancelActiveGeneration()
     timer?.invalidate()
     timer = nil
     playerNode.stop()
     isPlaying = false
+    isGeneratingAudio = false
     hasAudio = false
     currentTime = 0.0
     totalDuration = 0.0
@@ -77,10 +79,12 @@ extension KokoroTTSModel {
 
   /// Clears audio state without stopping the engine (used when text is edited)
   func clearAudio() {
+    cancelActiveGeneration()
     timer?.invalidate()
     timer = nil
     playerNode.stop()
     isPlaying = false
+    isGeneratingAudio = false
     hasAudio = false
     currentTime = 0.0
     totalDuration = 0.0
@@ -94,7 +98,7 @@ extension KokoroTTSModel {
 
   /// Cancels ongoing audio generation but keeps existing audio
   func cancelGeneration() {
-    shouldCancelGeneration = true
+    cancelActiveGeneration()
     isGeneratingAudio = false
   }
 

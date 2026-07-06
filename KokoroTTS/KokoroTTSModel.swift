@@ -75,6 +75,12 @@ final class KokoroTTSModel: ObservableObject {
   /// Flag to cancel ongoing generation
   var shouldCancelGeneration: Bool = false
 
+  /// Token used to ignore stale background generation callbacks.
+  private var activeGenerationID = UUID()
+
+  /// Synchronizes generation cancellation checks across the main and worker queues.
+  private let generationStateLock = NSLock()
+
   /// Current playback position in seconds
   @Published var currentTime: Double = 0.0
 
@@ -108,6 +114,30 @@ final class KokoroTTSModel: ObservableObject {
   /// Sets the rating for a specific voice (1-5, or 0 to clear)
   func setRating(_ rating: Int, for voice: String) {
     voiceRatings[voice] = rating
+  }
+
+  private func startGeneration() -> UUID {
+    generationStateLock.lock()
+    defer { generationStateLock.unlock() }
+
+    let generationID = UUID()
+    activeGenerationID = generationID
+    shouldCancelGeneration = false
+    return generationID
+  }
+
+  func cancelActiveGeneration() {
+    generationStateLock.lock()
+    activeGenerationID = UUID()
+    shouldCancelGeneration = true
+    generationStateLock.unlock()
+  }
+
+  func isGenerationActive(_ generationID: UUID) -> Bool {
+    generationStateLock.lock()
+    defer { generationStateLock.unlock() }
+
+    return activeGenerationID == generationID && !shouldCancelGeneration
   }
 
   /// Initializes the TTS model with TTS engine, audio components, and voice data.
@@ -181,9 +211,9 @@ final class KokoroTTSModel: ObservableObject {
     // Stop any existing playback
     stop()
 
-    // Mark as generating and reset cancel flag
+    // Mark as generating and reset cancel state
+    let generationID = startGeneration()
     isGeneratingAudio = true
-    shouldCancelGeneration = false
 
     // Preprocess text to improve speech output
     var processedText = text
@@ -240,10 +270,11 @@ final class KokoroTTSModel: ObservableObject {
       guard let self else { return }
 
       var totalAudioLength: Double = 0.0
+      var hasStartedPlayback = false
 
       for (index, chunk) in chunks.enumerated() {
         // Check if generation was cancelled
-        if self.shouldCancelGeneration {
+        if !self.isGenerationActive(generationID) {
           print("Generation cancelled")
           break
         }
@@ -267,7 +298,7 @@ final class KokoroTTSModel: ObservableObject {
           var combinedTokens: [MToken] = []
           var subFailed = false
           for (subIndex, subChunk) in subChunks.enumerated() {
-            guard !self.shouldCancelGeneration else { break }
+            guard self.isGenerationActive(generationID) else { break }
             do {
               let (subAudio, subTokens) = try self.kokoroTTSEngine.generateAudio(
                 voice: voice,
@@ -301,6 +332,8 @@ final class KokoroTTSModel: ObservableObject {
 
         // Update state on main thread
         DispatchQueue.main.async {
+          guard self.isGenerationActive(generationID) else { return }
+
           // Store audio samples for seeking
           self.audioSamples.append(contentsOf: audio)
 
@@ -324,8 +357,9 @@ final class KokoroTTSModel: ObservableObject {
           let options: AVAudioPlayerNodeBufferOptions = index == 0 ? .interrupts : []
           self.playerNode.scheduleBuffer(buffer, at: nil, options: options, completionHandler: nil)
 
-          // Start playback immediately after first chunk is scheduled
-          if index == 0 {
+          // Start playback immediately after the first successfully scheduled chunk
+          if !hasStartedPlayback {
+            hasStartedPlayback = true
             self.playerNode.play()
             self.isPlaying = true
             self.playbackStartTime = Date()
@@ -346,6 +380,7 @@ final class KokoroTTSModel: ObservableObject {
 
       // Mark generation as complete
       DispatchQueue.main.async {
+        guard self.isGenerationActive(generationID) else { return }
         self.isGeneratingAudio = false
       }
     }
