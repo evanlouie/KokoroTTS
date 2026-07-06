@@ -479,10 +479,10 @@
 		};
 		52FE06AA2EABBB5A0018FCF1 /* XCRemoteSwiftPackageReference "MisakiSwift" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/jlund/MisakiSwift";
+			repositoryURL = "https://github.com/mlalma/MisakiSwift";
 			requirement = {
-				kind = revision;
-				revision = a9060ba03c3c70eb2dd04f8326ad1d1eeced1303;
+				kind = exactVersion;
+				version = 1.0.6;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
